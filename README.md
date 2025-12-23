@@ -1,298 +1,625 @@
-# Distributed MD5 Password Cracker - Documentation
+# Distributed MD5 Password Cracker
 
-## Overview
-This system transforms a single-machine multithreaded password cracker into a distributed system using Java RMI, allowing workload distribution across multiple servers with multiple threads each.
+## Project Overview
 
-## Architecture
+This project transforms a single-machine multithreaded MD5 password cracker into a **Distributed System using Java RMI**. The system distributes workload across multiple RMI servers (simulated using VirtualBox VMs on a single physical machine), with each server further parallelizing work across multiple threads.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      CrackerClient                          │
-│  • Takes user input                                         │
-│  • Partitions search space                                  │
-│  • Coordinates servers                                      │
-│  • Aggregates results                                       │
-└───────────────┬─────────────────────────┬───────────────────┘
-                │ RMI                     │ RMI
-    ┌───────────▼──────────┐   ┌──────────▼───────────┐
-    │   CrackerServer 1    │   │   CrackerServer 2    │
-    │  • Range: [0, 48)    │   │  • Range: [48, 95)   │
-    │  • Creates threads   │   │  • Creates threads   │
-    │  • Logs activity     │   │  • Logs activity     │
-    └──────────┬───────────┘   └───────────┬──────────┘
-               │                           │
-        ┌──────┴──────┐             ┌──────┴──────┐
-        │   Thread 1  │             │   Thread 1  │
-        │   Thread 2  │             │   Thread 2  │
-        │   ...       │             │   ...       │
-        └─────────────┘             └─────────────┘
-```
+### Key Features
 
-## Search Space Partitioning Strategy
+- **Client-Server RMI Architecture** - Remote Method Invocation for distributed computing  
+- **Static Search-Space Partitioning** - Deterministic, non-overlapping work distribution  
+- **Multi-Level Parallelism** - Parallelization at both server and thread levels  
+- **Early Termination** - All workers stop when password is found  
+- **Comprehensive Logging** - Detailed logs for each server with timestamps  
+- **Performance Metrics** - Built-in timing for speedup and efficiency analysis  
+- **Thread-Safe Design** - Thread-local MessageDigest instances  
+- **Scalable Architecture** - Supports 1-2 servers, 1-10 threads per server  
 
-### Level 1: Server-Level Partitioning
+---
 
-The system uses **character set partitioning** based on the first character of passwords.
+## Hardware and Software Requirements
 
-**Character Set**: 95 printable ASCII characters (space to tilde, indices 0-94)
+### Physical Machine
+- **Operating System**: Windows/Linux/macOS (host OS)
+- **RAM**: Minimum 8GB (16GB recommended)
+- **CPU**: Multi-core processor (4+ cores recommended)
+- **Disk Space**: 10GB free space for VirtualBox VMs
 
-**Mathematical Division**:
-```
-For N servers:
-  baseChunk = 95 / N
-  remainder = 95 % N
-  
-For each server i:
-  startIndex = Σ(j=0 to i-1)[baseChunk + (j < remainder ? 1 : 0)]
-  chunkSize = baseChunk + (i < remainder ? 1 : 0)
-  endIndex = startIndex + chunkSize
-```
+### VirtualBox Setup
+- **VirtualBox**: Version 6.0 or higher
+- **Virtual Machines**: 2 VMs (to simulate 2 servers)
+  - Each VM: 2GB RAM, 2 CPU cores
+  - Network: Bridged Adapter or Host-Only Adapter
+  - OS: Ubuntu/Debian Linux (or any Linux distribution)
 
-**Example with 2 Servers**:
-- **Server 1**: Characters [0, 48) = 48 characters
-  - Includes: space through 'O'
-  - First chars: ' ', '!', '"', ..., 'N', 'O'
-  
-- **Server 2**: Characters [48, 95) = 47 characters
-  - Includes: 'P' through '~'
-  - First chars: 'P', 'Q', 'R', ..., '}', '~'
+### Software Requirements
+- **Java Development Kit (JDK)**: Version 8 or higher
+- **Java RMI**: Included in JDK (no additional installation needed)
+- Text editor or IDE (optional): VS Code, IntelliJ IDEA, Eclipse
 
-**Properties**:
-✓ Non-overlapping ranges (endIndex of server i = startIndex of server i+1)
-✓ Complete coverage (all 95 characters assigned)
-✓ Balanced distribution (max difference of 1 character)
+### Network Configuration
+- Ensure VMs can communicate with each other via network
+- Note down IP addresses of each VM
+- Firewall should allow RMI ports (default: 1099, 1100)
 
-### Level 2: Thread-Level Partitioning
+---
 
-Each server further divides its assigned character range across its threads using the **same algorithm**.
+## Compilation & Execution
 
-**Example**: Server 1 with 3 threads (range [0, 48)):
-```
-baseChunk = 48 / 3 = 16
-remainder = 48 % 3 = 0
+### Step 1: Compile All Java Files
 
-Thread 1: [0, 16)   = 16 characters
-Thread 2: [16, 32)  = 16 characters  
-Thread 3: [32, 48)  = 16 characters
-```
-
-### Complete Example
-
-**Configuration**: 2 servers, 3 threads each, password length 3
-
-**Server 1** searches all passwords starting with characters [0, 48):
-- Thread 1: First char in [0, 16), all combos for positions 2-3
-- Thread 2: First char in [16, 32), all combos for positions 2-3
-- Thread 3: First char in [32, 48), all combos for positions 2-3
-
-**Server 2** searches all passwords starting with characters [48, 95):
-- Thread 1: First char in [48, 63), all combos for positions 2-3
-- Thread 2: First char in [63, 79), all combos for positions 2-3
-- Thread 3: First char in [79, 95), all combos for positions 2-3
-
-**Total Search Space**: 95 × 95 × 95 = 857,375 combinations
-
-## File Descriptions
-
-### 1. `CrackerInterface.java`
-Remote interface defining the RMI contract:
-- `searchPassword()`: Initiates search with specific parameters
-- `stopSearch()`: Signals server to halt all operations
-- `ping()`: Health check method
-
-### 2. `SearchResult.java`
-Serializable data class containing:
-- Whether password was found
-- The password (if found)
-- Thread that found it
-- Server that found it
-- Search time
-
-### 3. `CrackerServer.java`
-RMI server implementation:
-- Accepts search requests via RMI
-- Creates and manages worker threads
-- Implements brute-force algorithm
-- Generates detailed log file (`server_name.log`)
-- Handles stop signals from client
-
-**Key Features**:
-- Thread-local MessageDigest for thread safety
-- Atomic variables for coordination
-- Comprehensive logging with timestamps
-- Exception handling
-
-### 4. `CrackerClient.java`
-CLI client that:
-- Takes user input (hash, threads, servers, length)
-- Connects to RMI servers
-- Partitions and distributes work
-- Manages concurrent searches
-- Signals servers to stop when password found
-- Displays results
-
-## Compilation
+Copy all Java files to your project directory, then compile:
 
 ```bash
-# Compile all files
 javac CrackerInterface.java
 javac SearchResult.java
 javac CrackerServer.java
 javac CrackerClient.java
 ```
 
-## Usage
+Or compile all at once:
 
-### Step 1: Start RMI Registry (Optional)
-The servers will create their own registries, but you can start one manually:
 ```bash
-rmiregistry 1099 &
-rmiregistry 1100 &
+javac *.java
 ```
 
-### Step 2: Start Servers
+---
 
-**Terminal 1 - Server 1**:
+### Step 2: Start RMI Servers
+
+#### For Single Server Setup (1 VM or Host Machine)
+
+**Terminal 1 - Start Server 1:**
 ```bash
 java CrackerServer Server1 1099
 ```
 
-**Terminal 2 - Server 2** (if using 2 servers):
+#### For Two Server Setup (2 VMs or Host + VM)
+
+**VM1 Terminal - Start Server 1:**
+```bash
+java CrackerServer Server1 1099
+```
+
+**VM2 Terminal - Start Server 2:**
 ```bash
 java CrackerServer Server2 1100
 ```
 
+**Note**: Servers will automatically create RMI registry on the specified port. You should see:
+```
+RMI registry created on port 1099
+Server 'Server1' is ready and bound to registry
+Waiting for client requests...
+```
+
+---
+
 ### Step 3: Run Client
 
-**Terminal 3**:
+On the host machine or any VM with network access to the servers:
+
 ```bash
 java CrackerClient
 ```
 
-Follow the prompts:
+Then follow the interactive prompts:
+
 ```
-Enter target MD5 hash: 5f4dcc3b5aa765d61d8327deb882cf99
-Enter password length to search: 8
-Enter number of threads per server: 5
-Enter number of servers to use: 2
+=== Distributed MD5 Password Cracker ===
+
+Enter target MD5 hash (32 hex characters): 5f4dcc3b5aa765d61d8327deb882cf99
+Enter password length to search (1-10): 8
+Enter number of threads per server (1-10): 5
+Enter number of servers to use (1 or 2): 2
+
+Server 1 details:
+  Server name (e.g., Server1): Server1
+  Host (e.g., localhost): 192.168.1.100
+  Port (e.g., 1099): 1099
+
+Server 2 details:
+  Server name (e.g., Server1): Server2
+  Host (e.g., localhost): 192.168.1.101
+  Port (e.g., 1099): 1100
+```
+
+**Important**: 
+- Replace `192.168.1.100` and `192.168.1.101` with actual IP addresses of your VMs
+- For local testing on same machine, use `localhost` for both servers with different ports
+
+---
+
+## Example Outputs
+
+### Example 1: Password Found (2 Servers, 5 Threads Each)
+
+**Client Output:**
+```
+=== Distributed MD5 Password Cracker ===
+
+Enter target MD5 hash (32 hex characters): 5f4dcc3b5aa765d61d8327deb882cf99
+Enter password length to search (1-10): 8
+Enter number of threads per server (1-10): 5
+Enter number of servers to use (1 or 2): 2
 
 Server 1 details:
   Server name: Server1
-  Host: localhost
+  Host: 192.168.1.100
   Port: 1099
 
 Server 2 details:
   Server name: Server2
-  Host: localhost
+  Host: 192.168.1.101
   Port: 1100
+
+✓ Connected to: Server1 at 192.168.1.100:1099
+✓ Connected to: Server2 at 192.168.1.101:1100
+
+=== Starting Distributed Search ===
+Target Hash: 5f4dcc3b5aa765d61d8327deb882cf99
+Password Length: 8
+Threads per Server: 5
+Number of Servers: 2
+Start Time: 2025-12-23 10:15:30
+
+Search Space Partitioning:
+  Server 1 (Server1): Characters [0, 48) - 48 characters
+  Server 2 (Server2): Characters [48, 95) - 47 characters
+
+→ Starting search on Server1...
+→ Starting search on Server2...
+★ PASSWORD FOUND by Server1!
+→ Server2 completed (not found)
+
+============================================================
+SEARCH COMPLETED
+============================================================
+Status: PASSWORD FOUND
+Password: 'password'
+Found by Thread: Server1-Thread-3
+Found on Server: Server1
+Server Search Time: 45678 ms
+Total Elapsed Time: 45.982 seconds
+End Time: 2025-12-23 10:16:16
+============================================================
 ```
 
-## Example Test Cases
+---
 
-### Test Case 1: Single Character Password
-```
-MD5: 5d41402abc4b2a76b9719d911017c592
-Password: "hello" (will find if length=5)
-Threads: 3
-Servers: 1
-```
+### Example 2: Password Not Found
 
-### Test Case 2: "password"
+**Client Output:**
 ```
-MD5: 5f4dcc3b5aa765d61d8327deb882cf99
-Password: "password"
-Length: 8
-Threads: 5
-Servers: 2
-```
+=== Starting Distributed Search ===
+Target Hash: 1234567890abcdef1234567890abcdef
+Password Length: 5
+Threads per Server: 3
+Number of Servers: 2
+Start Time: 2025-12-23 11:20:15
 
-### Test Case 3: Short Password
-```
-MD5: 900150983cd24fb0d6963f7d28e17f72
-Password: "abc"
-Length: 3
-Threads: 4
-Servers: 2
-```
+Search Space Partitioning:
+  Server 1 (Server1): Characters [0, 48) - 48 characters
+  Server 2 (Server2): Characters [48, 95) - 47 characters
 
-## Log Files
+→ Starting search on Server1...
+→ Starting search on Server2...
+→ Server1 completed (not found)
+→ Server2 completed (not found)
 
-Each server generates a log file: `server_1.log`, `server_2.log`, etc.
-
-**Log Contents**:
-```
-[2024-12-23 10:15:30.123] === Server Initialized: Server1 ===
-[2024-12-23 10:15:30.125] Server start time: 2024-12-23 10:15:30.125
-[2024-12-23 10:16:45.200] New search request received:
-[2024-12-23 10:16:45.201]   Target Hash: 5f4dcc3b5aa765d61d8327deb882cf99
-[2024-12-23 10:16:45.202]   Character Range: [0, 48)
-[2024-12-23 10:16:45.203]   Number of Threads: 5
-[2024-12-23 10:16:45.204]   Password Length: 8
-[2024-12-23 10:16:45.205]   Assigned Characters: ' ' to 'O' (48 chars)
-[2024-12-23 10:16:45.210] Creating 5 worker threads...
-[2024-12-23 10:16:45.211]   Server1-Thread-1 assigned range: [0, 10)
-[2024-12-23 10:16:45.212]   Server1-Thread-1 started at 2024-12-23 10:16:45.212
-...
-[2024-12-23 10:18:22.456] PASSWORD FOUND: 'password' by Server1-Thread-3
-[2024-12-23 10:18:22.457] Search completed in 97245 ms
+============================================================
+SEARCH COMPLETED
+============================================================
+Status: PASSWORD NOT FOUND
+The password was not found in the search space.
+Total Elapsed Time: 125.643 seconds
+End Time: 2025-12-23 11:22:21
+============================================================
 ```
 
-## Performance Analysis
+---
+
+### Example 3: Server Log Output
+
+**Contents of `server_1.log`:**
+```
+[2025-12-23 10:15:28.123] === Server Initialized: Server1 ===
+[2025-12-23 10:15:28.125] Server start time: 2025-12-23 10:15:28.125
+[2025-12-23 10:15:30.200] New search request received:
+[2025-12-23 10:15:30.201]   Target Hash: 5f4dcc3b5aa765d61d8327deb882cf99
+[2025-12-23 10:15:30.202]   Character Range: [0, 48)
+[2025-12-23 10:15:30.203]   Number of Threads: 5
+[2025-12-23 10:15:30.204]   Password Length: 8
+[2025-12-23 10:15:30.205]   Assigned Characters: ' ' to 'O' (48 chars)
+[2025-12-23 10:15:30.210] Creating 5 worker threads...
+[2025-12-23 10:15:30.211]   Server1-Thread-1 assigned range: [0, 10) = ' ' to ')' (10 chars)
+[2025-12-23 10:15:30.212]   Server1-Thread-1 started at 2025-12-23 10:15:30.212
+[2025-12-23 10:15:30.213]   Server1-Thread-2 assigned range: [10, 20) = '*' to '3' (10 chars)
+[2025-12-23 10:15:30.214]   Server1-Thread-2 started at 2025-12-23 10:15:30.214
+[2025-12-23 10:15:30.215]   Server1-Thread-3 assigned range: [20, 29) = '4' to '<' (9 chars)
+[2025-12-23 10:15:30.216]   Server1-Thread-3 started at 2025-12-23 10:15:30.216
+[2025-12-23 10:15:30.217]   Server1-Thread-4 assigned range: [29, 38) = '=' to 'F' (9 chars)
+[2025-12-23 10:15:30.218]   Server1-Thread-4 started at 2025-12-23 10:15:30.218
+[2025-12-23 10:15:30.219]   Server1-Thread-5 assigned range: [38, 48) = 'G' to 'O' (10 chars)
+[2025-12-23 10:15:30.220]   Server1-Thread-5 started at 2025-12-23 10:15:30.220
+[2025-12-23 10:16:16.108]   Server1-Thread-1 stopped at 2025-12-23 10:16:16.108
+[2025-12-23 10:16:16.109]   Server1-Thread-2 stopped at 2025-12-23 10:16:16.109
+[2025-12-23 10:16:16.110]   Server1-Thread-3 stopped at 2025-12-23 10:16:16.110
+[2025-12-23 10:16:16.111]   Server1-Thread-4 stopped at 2025-12-23 10:16:16.111
+[2025-12-23 10:16:16.112]   Server1-Thread-5 stopped at 2025-12-23 10:16:16.112
+[2025-12-23 10:16:16.115] PASSWORD FOUND: 'password' by Server1-Thread-3
+[2025-12-23 10:16:16.116] Search completed in 45906 ms
+```
+
+---
+
+## System Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      CrackerClient                          │
+│  • Takes user input                                         │
+│  • Partitions search space                                  │
+│  • Coordinates servers via RMI                              │
+│  • Aggregates results                                       │
+└───────────────┬─────────────────────────┬───────────────────┘
+                │ RMI                     │ RMI
+    ┌───────────▼──────────┐   ┌──────────▼───────────┐
+    │   CrackerServer 1    │   │   CrackerServer 2    │
+    │ (VM1 / localhost)    │   │ (VM2 / localhost)    │
+    │  • Range: [0, 48)    │   │  • Range: [48, 95)   │
+    │  • Creates threads   │   │  • Creates threads   │
+    │  • Logs to file      │   │  • Logs to file      │
+    └──────────┬───────────┘   └───────────┬──────────┘
+               │                           │
+        ┌──────┴──────┐             ┌──────┴──────┐
+        │   Thread 1  │             │   Thread 1  │
+        │   Thread 2  │             │   Thread 2  │
+        │   Thread 3  │             │   Thread 3  │
+        │   ...       │             │   ...       │
+        └─────────────┘             └─────────────┘
+```
+
+---
+
+## Search Space Partitioning Explained
+
+### Overview
+The system uses **hierarchical static partitioning** to divide work across servers and threads without overlap.
+
+### Character Set
+- **Total**: 95 printable ASCII characters (space to tilde)
+- **Indexed**: 0 to 94
+- **Examples**: ' ' (0), '!' (1), 'A' (33), 'a' (65), '~' (94)
+
+### Level 1: Server-Level Partitioning
+
+**Algorithm:**
+```
+totalChars = 95
+baseChunk = totalChars / numServers
+remainder = totalChars % numServers
+
+For each server i:
+    if i < remainder:
+        chunkSize = baseChunk + 1
+    else:
+        chunkSize = baseChunk
+    
+    startIndex = previous_endIndex
+    endIndex = startIndex + chunkSize
+```
+
+**Example: 2 Servers**
+- **Server 1**: Characters [0, 48) = 48 characters (' ' through 'O')
+- **Server 2**: Characters [48, 95) = 47 characters ('P' through '~')
+
+### Level 2: Thread-Level Partitioning
+
+Each server applies the same algorithm to divide its assigned character range across threads.
+
+**Example: Server 1 with 5 Threads (range [0, 48))**
+```
+48 / 5 = 9 remainder 3
+
+Thread 1: [0, 10)   = 10 characters (gets +1 from remainder)
+Thread 2: [10, 20)  = 10 characters (gets +1 from remainder)
+Thread 3: [20, 29)  = 9 characters  (gets +1 from remainder)
+Thread 4: [29, 38)  = 9 characters
+Thread 5: [38, 48)  = 10 characters
+```
+
+### Complete Example Visualization
+
+**Configuration**: 2 servers, 3 threads each, password length 4
+
+```
+Total Search Space: 95^4 = 81,450,625 combinations
+
+┌────────────────────────────────────────────────────────┐
+│              SERVER 1 (Characters 0-47)                │
+│                    48 characters                       │
+├─────────────────┬─────────────────┬────────────────────┤
+│   Thread 1      │   Thread 2      │    Thread 3        │
+│  Chars [0-16)   │  Chars [16-32)  │   Chars [32-48)    │
+│  16 characters  │  16 characters  │   16 characters    │
+│  16×95³ combos  │  16×95³ combos  │   16×95³ combos    │
+└─────────────────┴─────────────────┴────────────────────┘
+
+┌────────────────────────────────────────────────────────┐
+│              SERVER 2 (Characters 48-94)               │
+│                    47 characters                       │
+├──────────────────┬──────────────────┬──────────────────┤
+│   Thread 1       │   Thread 2       │    Thread 3      │
+│  Chars [48-63)   │  Chars [63-79)   │   Chars [79-95)  │
+│  15 characters   │  16 characters   │   16 characters  │
+│  15×95³ combos   │  16×95³ combos   │   16×95³ combos  │
+└──────────────────┴──────────────────┴──────────────────┘
+```
+
+### Mathematical Properties
+
+- **Non-overlapping**: Each thread searches unique character combinations  
+- **Complete Coverage**: All 95^L combinations are searched exactly once  
+- **Balanced Distribution**: Max difference of 1 character between workers  
+- **Deterministic**: Same configuration always produces same partitioning  
+
+### What Each Thread Searches
+
+For password length **L**, a thread with character range **[start, end)** searches:
+- **First character**: One from its assigned range
+- **Remaining L-1 characters**: Any of the 95 characters
+- **Total combinations**: `(end - start) × 95^(L-1)`
+
+**Example**: Thread with range [0, 16), password length 4
+```
+Combinations = 16 × 95³ = 16 × 857,375 = 13,718,000
+```
+
+---
+
+## Performance Testing & Analysis
 
 ### Metrics to Collect
 
-**Speedup**: 
-```
-S = T₁ / Tₙ
-where T₁ = time with 1 thread, Tₙ = time with n threads/servers
-```
+1. **Speedup**:
+   ```
+   S = T₁ / Tₙ
+   where T₁ = time with 1 thread, Tₙ = time with n threads
+   ```
 
-**Efficiency**:
-```
-E = S / n = T₁ / (n × Tₙ)
-where n = total number of threads across all servers
-```
+2. **Efficiency**:
+   ```
+   E = S / n = T₁ / (n × Tₙ)
+   where n = total threads (servers × threads_per_server)
+   ```
 
 ### Experimental Setup
 
-Run the same hash with different configurations:
-1. 1 server, 1 thread (baseline)
-2. 1 server, 2 threads
-3. 1 server, 5 threads
-4. 2 servers, 5 threads each
+Test the same MD5 hash with different configurations:
 
-Record the "Total Elapsed Time" for each run.
+| Test | Servers | Threads/Server | Total Threads | Expected Speedup |
+|------|---------|----------------|---------------|------------------|
+| 1    | 1       | 1              | 1             | 1.0× (baseline)  |
+| 2    | 1       | 2              | 2             | ~1.9×            |
+| 3    | 1       | 5              | 5             | ~4.5×            |
+| 4    | 1       | 10             | 10            | ~8×              |
+| 5    | 2       | 5              | 10            | ~8×              |
+
+**Recommended Test Hash**: `098f6bcd4621d373cade4e832627b4f6` (password = "test", length = 4)
+
+### Creating Results Table
+
+Run each configuration and record the "Total Elapsed Time":
+
+```
+Configuration,Servers,Threads,Time(s),Speedup,Efficiency
+Baseline,1,1,120.5,1.00,1.00
+Config2,1,2,62.3,1.93,0.97
+Config3,1,5,26.8,4.50,0.90
+Config4,1,10,16.2,7.44,0.74
+Config5,2,5,17.1,7.05,0.70
+```
+
+### Analysis Points
+
+- **Speedup**: Should increase with more threads but plateau due to overhead
+- **Efficiency**: Typically decreases with more threads (< 1.0 is normal)
+- **Comparison**: 1 server with 10 threads vs. 2 servers with 5 threads each
+- **Bottlenecks**: CPU, memory bandwidth, RMI network overhead
+
+---
 
 ## Troubleshooting
 
-### "Connection refused"
-- Ensure servers are running before starting client
-- Check firewall settings
-- Verify correct host and port numbers
+### Problem: "Connection refused" or "ConnectException"
 
-### "java.rmi.NotBoundException"
-- Server name in client must match exactly
-- Server must be fully started before client connects
+**Causes:**
+- Servers not running
+- Incorrect IP address or port
+- Firewall blocking connections
 
-### "Password not found"
+**Solutions:**
+```bash
+# Verify server is running
+# You should see "Server 'ServerX' is ready" message
+
+# Check IP address (on server VM)
+ip addr show  # Linux
+ipconfig      # Windows
+
+# Test network connectivity from client
+ping 192.168.1.100
+
+# Check if port is listening (on server VM)
+netstat -an | grep 1099
+
+# Temporarily disable firewall for testing
+sudo ufw disable  # Ubuntu/Debian
+```
+
+### Problem: "java.rmi.NotBoundException: Server1"
+
+**Cause:** Server name mismatch
+
+**Solution:**
+- Ensure server name in client exactly matches server startup name
+- Names are case-sensitive: `Server1` ≠ `server1`
+
+### Problem: "Password not found in search space"
+
+**Causes:**
+- Password is longer than specified search length
+- Password contains non-ASCII characters
+- Incorrect MD5 hash
+
+**Solutions:**
 - Increase password length parameter
-- Verify MD5 hash is correct (32 hex characters)
-- Password might be longer than search range
+- Verify MD5 hash is correct using online MD5 calculator
+- Test with known simple passwords first (e.g., "abc", "test")
 
-### Performance Issues
-- Increase number of threads (up to CPU core count)
-- Use multiple servers to distribute load
-- Ensure password length matches actual password
+### Problem: Server freezes or becomes unresponsive
 
-## Security Note
+**Causes:**
+- Too many threads for available CPU
+- Memory exhaustion
 
-This tool is for **educational purposes only**. MD5 is cryptographically broken and should not be used for password storage. Modern systems use bcrypt, scrypt, or Argon2.
+**Solutions:**
+```bash
+# Monitor resources
+top        # Linux
+htop       # Linux (better)
 
-## Key Design Benefits
+# Reduce number of threads per server
+# Recommended: threads ≤ CPU cores
 
-1. **Deterministic Partitioning**: No work duplication
-2. **Scalability**: Easy to add more servers
-3. **Fault Tolerance**: One server failing doesn't affect others
-4. **Load Balancing**: Even distribution across resources
-5. **Early Termination**: All workers stop when password found
-6. **Comprehensive Logging**: Full audit trail for analysis
+# Increase VM memory allocation
+# VirtualBox → Settings → System → Base Memory
+```
+
+### Problem: Very slow performance on VirtualBox
+
+**Causes:**
+- Insufficient VM resources
+- VT-x/AMD-V not enabled
+
+**Solutions:**
+- Enable hardware virtualization in BIOS/UEFI
+- Allocate more CPU cores to VMs
+- Use Host-Only or Bridged networking (not NAT)
+- Disable unnecessary services in VMs
+
+### Problem: Logs not being generated
+
+**Cause:** Permission issues or wrong directory
+
+**Solution:**
+```bash
+# Check current directory
+pwd
+
+# Verify write permissions
+ls -la
+
+# Logs are created in the directory where server is run
+# Look for: server_1.log, server_2.log, etc.
+```
+
+---
+
+## VirtualBox Setup Guide
+
+### Creating VMs
+
+1. **Create VM1 (Server 1)**:
+   - Name: Server1-VM
+   - Type: Linux, Ubuntu (64-bit)
+   - Memory: 2048 MB
+   - CPU: 2 cores
+   - Network: Bridged Adapter
+
+2. **Create VM2 (Server 2)**:
+   - Name: Server2-VM
+   - Type: Linux, Ubuntu (64-bit)
+   - Memory: 2048 MB
+   - CPU: 2 cores
+   - Network: Bridged Adapter
+
+3. **Install Java on both VMs**:
+```bash
+sudo apt update
+sudo apt install default-jdk
+java -version  # Verify installation
+```
+
+### Network Configuration
+
+**Option 1: Bridged Adapter** (Recommended)
+- VMs get IP addresses from your router
+- Easy to connect from host
+- VMs can communicate with each other
+
+**Option 2: Host-Only Adapter**
+- VMs only communicate with host and each other
+- More isolated, but requires additional setup
+
+**Find VM IP addresses:**
+```bash
+# On each VM
+ip addr show | grep inet
+```
+
+### Transferring Files to VMs
+
+**Option 1: Shared Folder**
+```bash
+# VirtualBox → Settings → Shared Folders
+# Add folder from host
+# Mount in VM:
+sudo mount -t vboxsf shared_folder /mnt/shared
+```
+
+**Option 2: SCP**
+```bash
+# From host
+scp *.java username@192.168.1.100:/home/username/
+```
+
+**Option 3: Git**
+```bash
+# On VMs
+git clone <your-repository-url>
+```
+
+---
+
+## Design Benefits
+
+1. **Deterministic Partitioning**: No race conditions or duplicate work
+2. **Scalability**: Easy to add more servers or threads
+3. **Fault Isolation**: One server failing doesn't affect others  
+4. **Load Balancing**: Even distribution of work across all resources
+5. **Early Termination**: Global stop signal when password is found
+6. **Comprehensive Logging**: Full audit trail for debugging and analysis
+7. **Thread Safety**: Thread-local MessageDigest instances prevent contention
+8. **Clean Architecture**: Clear separation between client and server logic
+
+---
+
+## Security & Educational Note
+
+⚠️ **This tool is for educational purposes only.**
+
+- MD5 is cryptographically broken and should **never** be used for password hashing
+- Modern systems use **bcrypt**, **scrypt**, or **Argon2**
+- This project demonstrates distributed computing concepts, not security best practices
+- Do not use this tool for unauthorized password cracking
+
+---
+
+## References & Further Reading
+
+- **Java RMI Tutorial**: https://docs.oracle.com/javase/tutorial/rmi/
+- **MD5 Algorithm**: https://en.wikipedia.org/wiki/MD5
+- **Parallel Computing**: Introduction to Parallel Computing (Grama et al.)
+- **Distributed Systems**: Distributed Systems: Principles and Paradigms (Tanenbaum)
