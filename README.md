@@ -138,30 +138,30 @@ Server 2 details:
 ```
 === Distributed MD5 Password Cracker ===
 
-Enter target MD5 hash (32 hex characters): 5f4dcc3b5aa765d61d8327deb882cf99
-Enter password length to search (1-10): 8
-Enter number of threads per server (1-10): 5
+Enter target MD5 hash (32 hex characters): fcd4ea256e602c349123aebbc6ff5662
+Enter password length to search (1-10): 5
+Enter number of threads per server (1-10): 10
 Enter number of servers to use (1 or 2): 2
 
 Server 1 details:
-  Server name: Server1
-  Host: 192.168.1.100
-  Port: 1099
+  Server name (e.g., Server1): Server1
+  Host (e.g., localhost): 192.168.0.26
+  Port (e.g., 1099): 1099
 
 Server 2 details:
-  Server name: Server2
-  Host: 192.168.1.101
-  Port: 1100
-
-✓ Connected to: Server1 at 192.168.1.100:1099
-✓ Connected to: Server2 at 192.168.1.101:1100
+  Server name (e.g., Server1): Server2
+  Host (e.g., localhost): 192.168.0.29
+  Port (e.g., 1099): 1100
 
 === Starting Distributed Search ===
-Target Hash: 5f4dcc3b5aa765d61d8327deb882cf99
-Password Length: 8
-Threads per Server: 5
+Target Hash: fcd4ea256e602c349123aebbc6ff5662
+Password Length: 5
+Threads per Server: 10
 Number of Servers: 2
-Start Time: 2025-12-23 10:15:30
+Start Time: 2025-12-25 10:43:24
+
+✓ Connected to: Server1 at 192.168.0.26:1099
+✓ Connected to: Server2 at 192.168.0.29:1100
 
 Search Space Partitioning:
   Server 1 (Server1): Characters [0, 48) - 48 characters
@@ -176,12 +176,12 @@ Search Space Partitioning:
 SEARCH COMPLETED
 ============================================================
 Status: PASSWORD FOUND
-Password: 'password'
-Found by Thread: Server1-Thread-3
+Password: 'K^LbU'
+Found by Thread: Server1-Thread-9
 Found on Server: Server1
-Server Search Time: 45678 ms
-Total Elapsed Time: 45.982 seconds
-End Time: 2025-12-23 10:16:16
+Server Search Time: 270197 ms
+Total Elapsed Time: 270.256 seconds
+End Time: 2025-12-25 10:47:54
 ============================================================
 ```
 
@@ -374,51 +374,6 @@ For password length **L**, a thread with character range **[start, end)** search
 **Example**: Thread with range [0, 16), password length 4
 ```
 Combinations = 16 × 95³ = 16 × 857,375 = 13,718,000
-```
-
----
-
-## Performance Testing & Analysis
-
-### Metrics to Collect
-
-1. **Speedup**:
-   ```
-   S = T₁ / Tₙ
-   where T₁ = time with 1 thread, Tₙ = time with n threads
-   ```
-
-2. **Efficiency**:
-   ```
-   E = S / n = T₁ / (n × Tₙ)
-   where n = total threads (servers × threads_per_server)
-   ```
-
-### Experimental Setup
-
-Test the same MD5 hash with different configurations:
-
-| Test | Servers | Threads/Server | Total Threads | Expected Speedup |
-|------|---------|----------------|---------------|------------------|
-| 1    | 1       | 1              | 1             | 1.0× (baseline)  |
-| 2    | 1       | 2              | 2             | ~1.9×            |
-| 3    | 1       | 5              | 5             | ~4.5×            |
-| 4    | 1       | 10             | 10            | ~8×              |
-| 5    | 2       | 5              | 10            | ~8×              |
-
-**Recommended Test Hash**: `098f6bcd4621d373cade4e832627b4f6` (password = "test", length = 4)
-
-### Creating Results Table
-
-Run each configuration and record the "Total Elapsed Time":
-
-```
-Configuration,Servers,Threads,Time(s),Speedup,Efficiency
-Baseline,1,1,120.5,1.00,1.00
-Config2,1,2,62.3,1.93,0.97
-Config3,1,5,26.8,4.50,0.90
-Config4,1,10,16.2,7.44,0.74
-Config5,2,5,17.1,7.05,0.70
 ```
 
 ### Analysis Points
