@@ -552,14 +552,12 @@ sudo apt install default-jdk
 java -version  # Verify installation
 ```
 
-### Network Configuration
+4. **Compile all Java Files**
+```bash
+javac *.java
+```
 
-**Bridged Adapter** (Recommended)
-- VMs get IP addresses from your router
-- Easy to connect from host
-- VMs can communicate with each other
-
-**Find VM IP addresses:**
+5. **Find VM IP addresses:**
 ```bash
 # On each VM
 ip addr show | grep inet
@@ -567,7 +565,7 @@ ip addr show | grep inet
 
 ### Running Tests
 
-#### For Two Server Setup (2 VMs)
+#### Two Server Setup (2 VMs)
 
 **VM1 Terminal - Start Server 1:**
 ```bash
@@ -578,19 +576,27 @@ java -Djava.rmi.server.hostname=192.168.0.26 -Djava.net.preferIPv4Stack=true Cra
 ```bash
 java -Djava.rmi.server.hostname=192.168.0.29 -Djava.net.preferIPv4Stack=true CrackerServer Server2 1100
 ```
+Replace `192.168.0.26` and `192.168.0.29` with actual IP addresses of your VMs
 
-**Important**: 
-- Replace `192.168.0.26` and `192.168.0.29` with actual IP addresses of your VMs
-
-#### Run Client
-
-On the host machine or any VM with network access to the servers:
-
+#### Client
 ```bash
 java CrackerClient
 ```
 
-#### Test Hash Values
+```
+Server 1 details:
+  Server name (e.g., Server1): Server1
+  Host (e.g., localhost): 192.168.0.26
+  Port (e.g., 1099): 1099
+
+Server 2 details:
+  Server name (e.g., Server1): Server2
+  Host (e.g., localhost): 192.168.0.29
+  Port (e.g., 1099): 1100
+```
+Replace `192.168.0.26` and `192.168.0.29` with actual IP addresses of your VMs
+
+### Test Hash Values
 
 2-char `yR`
 
