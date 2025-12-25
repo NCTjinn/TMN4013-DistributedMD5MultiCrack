@@ -554,14 +554,10 @@ java -version  # Verify installation
 
 ### Network Configuration
 
-**Option 1: Bridged Adapter** (Recommended)
+**Bridged Adapter** (Recommended)
 - VMs get IP addresses from your router
 - Easy to connect from host
 - VMs can communicate with each other
-
-**Option 2: Host-Only Adapter**
-- VMs only communicate with host and each other
-- More isolated, but requires additional setup
 
 **Find VM IP addresses:**
 ```bash
@@ -569,26 +565,61 @@ java -version  # Verify installation
 ip addr show | grep inet
 ```
 
-### Transferring Files to VMs
+### Running Tests
 
-**Option 1: Shared Folder**
+#### For Two Server Setup (2 VMs)
+
+**VM1 Terminal - Start Server 1:**
 ```bash
-# VirtualBox → Settings → Shared Folders
-# Add folder from host
-# Mount in VM:
-sudo mount -t vboxsf shared_folder /mnt/shared
+java -Djava.rmi.server.hostname=192.168.0.26 -Djava.net.preferIPv4Stack=true CrackerServer Server1 1099
 ```
 
-**Option 2: SCP**
+**VM2 Terminal - Start Server 2:**
 ```bash
-# From host
-scp *.java username@192.168.1.100:/home/username/
+java -Djava.rmi.server.hostname=192.168.0.29 -Djava.net.preferIPv4Stack=true CrackerServer Server2 1100
 ```
 
-**Option 3: Git**
+**Important**: 
+- Replace `192.168.0.26` and `192.168.0.29` with actual IP addresses of your VMs
+
+#### Run Client
+
+On the host machine or any VM with network access to the servers:
+
 ```bash
-# On VMs
-git clone <your-repository-url>
+java CrackerClient
+```
+
+#### Test Hash Values
+
+2-char `yR`
+
+```bash
+36b42ccc5a415eae329e72d13978ef18
+```
+
+3-char `*Rt`
+
+```bash
+83f73c1cd3155845c82b86c55e6c2ddf
+```
+
+4-char `,IO2`
+
+```bash
+6fe3664a4c30d84e0aee3b950d1f425f
+```
+
+5-char `K^LbU`
+
+```bash
+fcd4ea256e602c349123aebbc6ff5662
+```
+
+6-char `CS_Bv@`
+
+```bash
+26f8d7b35de91cc3248465cc6040d655
 ```
 
 ---
